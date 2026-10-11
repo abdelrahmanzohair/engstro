@@ -13,16 +13,19 @@ An industrial-grade Progressive Web App for plant maintenance and machinery diag
 ## Tech
 
 - Plain HTML, CSS and JavaScript (`public/`) — no front-end build step
-- Netlify Edge Function (`netlify/edge-functions/telegram.ts`) — streams requests to the Telegram Bot API with the token kept server-side
-- Netlify Function (`netlify/functions/diagnose.mts`) — diagnostic engine using Claude via Netlify AI Gateway (no API key needed)
+- Node.js + Express (`server.js`) — serves `public/`, relays `/api/telegram/:method` to the Telegram Bot API with the token kept server-side, and runs the `/api/diagnose` engine (Claude, via `ANTHROPIC_API_KEY`)
 
 ## Configuration
 
-Set the bot token as an environment variable in the Netlify UI (**Project configuration → Environment variables**):
+Set these as environment variables on the Railway service (**Variables**):
 
 | Variable | Purpose |
 |----------|---------|
-| `TELEGRAM_BOT_TOKEN` | Token from @BotFather. Read only by the edge function; never shipped to the browser. |
+| `TELEGRAM_BOT_TOKEN` | Token from @BotFather. Read only by the server; never shipped to the browser. |
+| `ANTHROPIC_API_KEY` | Anthropic API key for `/api/diagnose`. |
+| `ANTHROPIC_MODEL` | Optional. Defaults to `claude-sonnet-5-5`. |
+| `CORS_ORIGINS` | Optional. Comma-separated origins allowed to call `/api`. |
+| `TELEGRAM_API_BASE` | Optional. Self-hosted Bot API URL (needed for uploads > 50 MB). |
 
 Users must press **Start** on the bot once before it can message them.
 
@@ -30,10 +33,10 @@ Users must press **Start** on the bot once before it can message them.
 
 ```bash
 npm install
-netlify dev
+TELEGRAM_BOT_TOKEN=... ANTHROPIC_API_KEY=... npm start
 ```
 
-Then open the printed local URL. AI Gateway and environment variables are injected by `netlify dev` when the project is linked.
+Then open http://localhost:3000.
 
 ## Limits worth knowing
 

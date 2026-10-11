@@ -1,14 +1,20 @@
 {
   "name": "engstro",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "ENGSTRO — industrial plant maintenance & machinery diagnostics PWA",
   "type": "module",
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.133.0"
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
   },
-  "devDependencies": {
-    "@netlify/edge-functions": "^4.0.2",
-    "@netlify/functions": "^6.0.2"
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0"
   }
 }
+
