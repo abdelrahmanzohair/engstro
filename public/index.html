@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="ar" dir="rtl" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>ENGSTRO — Plant Maintenance &amp; Machinery Diagnostics</title>
-  <meta name="description" content="ENGSTRO is an industrial-grade diagnostics console for plant maintenance teams. Describe a fault, attach evidence, get an engineering report — delivered to Telegram." />
+  <meta name="description" content="ENGSTRO is an industrial-grade diagnostics console for plant maintenance teams. Describe a fault, attach evidence, get an engineering report." />
   <meta name="theme-color" content="#0F0F12" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#F8F9FA" media="(prefers-color-scheme: light)" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -17,6 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <!-- مكتبة html2pdf لتصدير التقارير -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script>
     // Apply saved theme before paint to avoid a flash
@@ -52,6 +54,23 @@
       </div>
 
       <div class="topbar-actions">
+        <!-- زر تصدير PDF الجديد -->
+        <button id="exportPdfBtn" class="btn ghost" type="button" title="تصدير التقارير إلى PDF" style="display: flex; align-items: center; gap: 4px; padding: 6px 10px; font-size: 13px; cursor: pointer;">
+          📥 <span style="font-size: 12px;">PDF</span>
+        </button>
+
+        <!-- قائمة اختيار اللغات الشاملة -->
+        <select id="langSelect" aria-label="Select Language" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 6px 10px; border-radius: 8px; font-size: 13px; cursor: pointer;">
+          <option value="ar" selected>العربية (Arabic)</option>
+          <option value="en">English</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+          <option value="es">Español</option>
+          <option value="zh">中文 (Chinese)</option>
+          <option value="ja">日本語 (Japanese)</option>
+          <option value="ru">Русский (Russian)</option>
+        </select>
+
         <button id="installBtn" class="btn-install" type="button" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4.5-4.5M12 15l4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></svg>
           <span>Install App</span>
@@ -102,8 +121,8 @@
       <section id="emptyState" class="empty">
         <img class="empty-logo" src="/icons/icon-192.png" width="96" height="96" alt="" />
         <p class="eyebrow">Diagnostics Console · v1.0</p>
-        <h1>What's the machine telling you?</h1>
-        <p class="lede">Describe the symptom — noise, vibration, heat, trips, leaks. Attach a photo, a 10-second clip, a voice note or a maintenance log if you have one. Attachments are optional.</p>
+        <h1>ما الذي تخبرك به الآلة اليوم؟</h1>
+        <p class="lede">صف العطل — صوت، اهتزاز، حرارة، توقف، تسريب. يمكنك إرفاق صورة، فيديو قصير، ملاحظة صوتية، أو مستند فني.</p>
         <div class="chips">
           <button class="chip" type="button" data-prompt="Centrifugal pump at 2950 RPM is making a gravel-like rattling noise and discharge pressure is fluctuating. Suction strainer was cleaned last week.">
             <span class="chip-k">PUMP</span> Gravel noise &amp; pressure swings
@@ -151,7 +170,7 @@
         </div>
 
         <div class="input-shell">
-          <textarea id="prompt" rows="1" placeholder="Describe the fault or ask a maintenance question…" aria-label="Message"></textarea>
+          <textarea id="prompt" rows="1" placeholder="اكتب وصف العطل أو استفسار الصيانة…" aria-label="Message"></textarea>
 
           <div id="recorder" class="recorder" hidden>
             <span class="rec-dot" aria-hidden="true"></span>
