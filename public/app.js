@@ -1,3 +1,4 @@
+```javascript
 /* =========================================================
    ENGSTRO — client application
    ========================================================= */
@@ -5,9 +6,6 @@
   'use strict';
 
   // ---------- API configuration ----------
-  // Telegram Bot API calls go through a same-origin relay (/api/telegram/<method>)
-  // that holds the bot token server-side in TELEGRAM_BOT_TOKEN, so it is never
-  // exposed in the browser bundle. Each method maps 1:1 to the Bot API endpoint.
   const TELEGRAM_API = (method) => `/api/telegram/${method}`;
   const TG = {
     text: TELEGRAM_API('sendMessage'),
@@ -22,12 +20,12 @@
   // ---------- Limits ----------
   const MB = 1024 * 1024;
   const MAX_FILE_BYTES = 100 * MB;
-  const TELEGRAM_UPLOAD_CAP = 50 * MB; // Bot API hard limit for multipart uploads
+  const TELEGRAM_UPLOAD_CAP = 50 * MB;
   const MAX_VIDEO_SECONDS = 10;
   const MAX_AUDIO_SECONDS = 30;
   const DOC_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'log'];
   const TEXT_EXTENSIONS = ['txt', 'log', 'csv'];
-  const PDF_INLINE_LIMIT = 1 * MB; // only PDFs this small are base64-inlined for the diagnostic engine
+  const PDF_INLINE_LIMIT = 1 * MB;
   const UPLOAD_TIMEOUT_MS = 90 * 1000;
 
   const STORE = {
@@ -65,6 +63,8 @@
     testTelegram: $('#testTelegram'),
     clearChat: $('#clearChat'),
     toasts: $('#toasts'),
+    langSelect: $('#langSelect'),
+    exportPdfBtn: $('#exportPdfBtn'),
     files: {
       image: $('#fileImage'),
       video: $('#fileVideo'),
@@ -73,14 +73,76 @@
     },
   };
 
-  const GEAR_PATH = document.querySelector('.brand-gear path').getAttribute('d');
+  const GEAR_PATH = document.querySelector('.brand-gear path')?.getAttribute('d') || '';
 
   const state = {
-    attachment: null, // { kind, file, name, size, mime, duration, objectUrl }
+    attachment: null,
     busy: false,
-    history: [], // { role, text, ts, attachment?: meta }
+    history: [],
     deferredPrompt: null,
   };
+
+  // =========================================================
+  // Language & Direction Switcher (RTL / LTR)
+  // =========================================================
+  if (el.langSelect) {
+    el.langSelect.addEventListener('change', (e) => {
+      const lang = e.target.value;
+      if (lang === 'ar' || lang === 'fa' || lang === 'ur') {
+        document.documentElement.dir = 'rtl';
+      } else {
+        document.documentElement.dir = 'ltr';
+      }
+      document.documentElement.lang = lang;
+      el.prompt.placeholder = lang === 'ar' ? 'اكتب وصف العطل أو استفسار الصيانة…' : 'Describe the fault or ask a maintenance question…';
+    });
+  }
+
+  // =========================================================
+  // Export PDF with customized footer and count selector
+  // =========================================================
+  if (el.exportPdfBtn) {
+    el.exportPdfBtn.addEventListener('click', () => {
+      const messages = el.feed.querySelectorAll('.msg');
+      if (messages.length === 0) {
+        toast('warn', 'تنبيه', 'لا توجد تقارير أو محادثات لتصديرها.');
+        return;
+      }
+
+      const countInput = prompt(`كم عدد التقارير أو الأسئلة الأخيرة التي تريد تضمينها في ملف الـ PDF؟ (المتاح: ${messages.length})`, String(messages.length));
+      const count = parseInt(countInput, 10);
+      if (isNaN(count) || count <= 0) return;
+
+      const targetMessages = Array.from(messages).slice(-count);
+
+      const pdfContainer = document.createElement('div');
+      pdfContainer.style.padding = '30px';
+      pdfContainer.style.fontFamily = 'Arial, sans-serif';
+      pdfContainer.dir = document.documentElement.dir;
+
+      pdfContainer.innerHTML = `
+        <h1 style="text-align: center; color: #1e293b; font-size: 20px;">تقرير الفحص والصيانة الصناعية - ENGSTRO</h1>
+        <hr style="border: 1px solid #cbd5e1; margin-bottom: 20px;">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          ${targetMessages.map(m => `<div style="padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px;">${m.innerHTML}</div>`).join('')}
+        </div>
+        <br><hr style="border: 0.5px solid #cbd5e1; margin-top: 30px;">
+        <p style="text-align: center; font-weight: bold; color: #0284c7; font-size: 13px; margin-top: 15px;">
+          تم انشاء التقرير بواسطة Engstro مساعد الصيانة الأول فى العالم
+        </p>
+      `;
+
+      const opt = {
+        margin: 10,
+        filename: `ENGSTRO_Report_${new Date().toISOString().slice(0,10)}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+
+      html2pdf().set(opt).from(pdfContainer).save();
+    });
+  }
 
   // =========================================================
   // Telegram Web App
@@ -120,10 +182,6 @@
 
   async function telegramCall(endpoint, body) {
     const isForm = body instanceof FormData;
-    // For FormData, leave Content-Type unset: the browser writes
-    // `multipart/form-data; boundary=…` itself and streams the File parts
-    // from disk (no Base64, no in-memory copy). A hand-set header would lose
-    // the boundary and Telegram would reject the body.
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), UPLOAD_TIMEOUT_MS);
     let res;
@@ -148,8 +206,6 @@
     return telegramCall(TG.text, { chat_id: chatId, text: text.slice(0, 4096), disable_web_page_preview: true });
   }
 
-  // kind → Bot API multipart field; the field name matches the method
-  // (sendVoice ↔ `voice`, so n8n's Telegram trigger sees a Voice message).
   function tgMedia(chatId, kind, file, filename, caption, { duration } = {}) {
     const field = { photo: 'photo', video: 'video', audio: 'audio', voice: 'voice', document: 'document' }[kind];
     const form = new FormData();
@@ -304,7 +360,7 @@
   });
 
   // =========================================================
-  // Attachments (all optional)
+  // Attachments
   // =========================================================
   function toggleAttachMenu(open) {
     const show = open ?? el.attachMenu.hidden;
@@ -346,7 +402,6 @@
       };
       media.onloadedmetadata = () => {
         if (media.duration === Infinity) {
-          // Some recorders omit duration; force the browser to compute it
           media.currentTime = 1e101;
           media.ontimeupdate = () => {
             media.ontimeupdate = null;
@@ -472,7 +527,6 @@
     el.preview.hidden = false;
   }
 
-  // Prepare a compact representation of the attachment for the diagnostic engine
   function imageToDataUrl(src, maxSide = 1280) {
     return new Promise((resolve) => {
       const img = new Image();
@@ -543,16 +597,11 @@
   // =========================================================
   const recorder = { active: false, media: null, stream: null, chunks: [], start: 0, raf: 0, ctx: null, analyser: null, cancelled: false };
 
-  // Voice notes are exported as OGG/Opus (Telegram's native voice format, read
-  // by Groq Whisper) or WAV. OGG is recorded directly where supported (Firefox);
-  // WebM/Opus (Chrome, Edge, Safari 18.4+) is remuxed losslessly into OGG;
-  // anything else (older Safari's MP4/AAC) is decoded and re-encoded as WAV.
   function pickMime() {
     const types = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
     return types.find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
   }
 
-  // ---- WebM (Matroska) → Ogg Opus remux, no re-encoding ----
   function readVint(b, p, keepMarker) {
     const first = b[p];
     let len = 1;
@@ -568,7 +617,7 @@
   }
 
   function parseWebmOpus(b) {
-    const MASTER = new Set([0x18538067, 0x1f43b675, 0x1654ae6b, 0xae, 0xe1, 0xa0]); // Segment, Cluster, Tracks, TrackEntry, Audio, BlockGroup
+    const MASTER = new Set([0x18538067, 0x1f43b675, 0x1654ae6b, 0xae, 0xe1, 0xa0]);
     const out = { head: null, channels: 1, packets: [] };
     let p = 0;
     while (p < b.length) {
@@ -578,15 +627,14 @@
       if (!size) break;
       const start = p + id.len + size.len;
       if (MASTER.has(id.v) || size.unknown) {
-        p = start; // descend into children
+        p = start;
         continue;
       }
       const end = start + size.v;
       if (end > b.length) break;
-      if (id.v === 0x63a2) out.head = b.slice(start, end); // CodecPrivate = OpusHead
-      else if (id.v === 0x9f) out.channels = b[start]; // Channels
+      if (id.v === 0x63a2) out.head = b.slice(start, end);
+      else if (id.v === 0x9f) out.channels = b[start];
       else if (id.v === 0xa3 || id.v === 0xa1) {
-        // SimpleBlock / Block: track vint, int16 timecode, flags, frame
         const track = readVint(b, start, false);
         const flags = b[start + track.len + 2];
         if (flags & 0x06) throw new Error('laced blocks unsupported');
@@ -630,7 +678,7 @@
     const bodyLen = packets.reduce((a, pk) => a + pk.length, 0);
     const page = new Uint8Array(27 + lacing.length + bodyLen);
     const dv = new DataView(page.buffer);
-    page.set([0x4f, 0x67, 0x67, 0x53, 0, type]); // "OggS", version, header type
+    page.set([0x4f, 0x67, 0x67, 0x53, 0, type]);
     dv.setUint32(6, granule % 0x100000000, true);
     dv.setUint32(10, Math.floor(granule / 0x100000000), true);
     dv.setUint32(14, serial, true);
@@ -655,7 +703,7 @@
       head = new Uint8Array(19);
       const hv = new DataView(head.buffer);
       head.set([0x4f, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64, 1, channels || 1]);
-      hv.setUint16(10, 312, true); // pre-skip
+      hv.setUint16(10, 312, true);
       hv.setUint32(12, 48000, true);
     }
     const enc = new TextEncoder();
@@ -686,7 +734,6 @@
     return new Blob(pages, { type: 'audio/ogg' });
   }
 
-  // ---- Fallback: decode → 16 kHz mono 16-bit PCM WAV (Whisper's native rate) ----
   async function blobToWav(blob) {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     const ctx = new Ctx();
@@ -709,8 +756,8 @@
     wav.setUint32(4, 36 + pcm.length * 2, true);
     str(8, 'WAVEfmt ');
     wav.setUint32(16, 16, true);
-    wav.setUint16(20, 1, true); // PCM
-    wav.setUint16(22, 1, true); // mono
+    wav.setUint16(20, 1, true);
+    wav.setUint16(22, 1, true);
     wav.setUint32(24, rate, true);
     wav.setUint32(28, rate * 2, true);
     wav.setUint16(32, 2, true);
@@ -730,9 +777,7 @@
     if (recordedType.includes('webm')) {
       try {
         return { blob: webmToOgg(await raw.arrayBuffer()), extn: 'ogg' };
-      } catch (_) {
-        /* fall through to WAV */
-      }
+      } catch (_) {}
     }
     return { blob: await blobToWav(raw), extn: 'wav' };
   }
@@ -758,7 +803,6 @@
     recorder.start = performance.now();
     recorder.active = true;
 
-    // Live waveform
     try {
       recorder.ctx = new (window.AudioContext || window.webkitAudioContext)();
       const src = recorder.ctx.createMediaStreamSource(recorder.stream);
@@ -780,7 +824,7 @@
   function tick() {
     if (!recorder.active) return;
     const elapsed = (performance.now() - recorder.start) / 1000;
-    el.recTime.textContent = `${elapsed.toFixed(1).padStart(4, '0')} / ${MAX_AUDIO_SECONDS}s`;
+    el.recTime.textContent = `${elapsed.toFixed(1).padStart(4, '0')} /${MAX_AUDIO_SECONDS}s`;
     el.recTime.classList.toggle('near', elapsed > MAX_AUDIO_SECONDS - 5);
     drawWave();
     if (elapsed >= MAX_AUDIO_SECONDS) {
@@ -858,14 +902,14 @@
   el.recCancel.addEventListener('click', () => stopRecording(true));
 
   // =========================================================
-  // Markdown → safe HTML (subset used by diagnostic reports)
+  // Markdown → safe HTML
   // =========================================================
   const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   function inline(s) {
     return esc(s)
       .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\*\*\[(CRITICAL|HIGH|MEDIUM|LOW)\]\*\*|\[(CRITICAL|HIGH|MEDIUM|LOW)\]/gi, (_, a, b) => {
+      .replace(/\*\*\[(CRITICAL\vert{}HIGH\vert{}MEDIUM\vert{}LOW)\]\*\*|\[(CRITICAL\vert{}HIGH\vert{}MEDIUM\vert{}LOW)\]/gi, (_, a, b) => {
         const lvl = (a || b).toLowerCase();
         return `<span class="sev ${lvl}">${lvl.toUpperCase()}</span>`;
       })
@@ -977,7 +1021,6 @@
     if (detail) node.title = detail;
   }
 
-  // Spinner + indeterminate bar on the sent message while a file uploads.
   function startUploadIndicator(statusNode, att) {
     setTgStatus(statusNode, 'uploading');
     const msg = statusNode.closest('.msg');
@@ -1060,11 +1103,12 @@
     };
   }
 
+  // تعديل تقرير الـ AI لإلغاء زر Telegram المزعج واستبداله بزر النسخ فقط
   function addReport(entry, { error = false, live = false } = {}) {
     el.empty.hidden = true;
     const wrap = document.createElement('div');
     wrap.className = 'msg ai';
-    const sevMatch = /\[(CRITICAL|HIGH|MEDIUM|LOW)\]/i.exec(entry.text);
+    const sevMatch = /\[(CRITICAL\vert{}HIGH\vert{}MEDIUM\vert{}LOW)\]/i.exec(entry.text);
     const sev = sevMatch ? sevMatch[1].toLowerCase() : null;
     wrap.innerHTML = `
       <article class="report${error ? ' error' : ''}">
@@ -1079,9 +1123,6 @@
           <button class="r-act" type="button" data-act="copy">
             <svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Copy
           </button>
-          <button class="r-act" type="button" data-act="telegram">
-            <svg viewBox="0 0 24 24"><path d="M21.5 4.5 2.8 11.7c-.9.4-.9 1.6.1 1.9l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.4l2.6-2.5 4.9 3.6c.6.4 1.4.1 1.6-.6L23 5.8c.2-.9-.7-1.6-1.5-1.3Z"/></svg>Send to Telegram
-          </button>
         </footer>
       </article>`;
     wrap.querySelector('.report-body').innerHTML = renderMarkdown(entry.text);
@@ -1091,7 +1132,6 @@
       status = tgStatusEl(getChatId() ? (autoForwardEnabled() ? 'pending' : 'skip') : 'off');
       foot.appendChild(status);
     }
-    if (error) foot.querySelector('[data-act="telegram"]').remove();
 
     foot.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-act]');
@@ -1103,22 +1143,6 @@
         } catch (_) {
           toast('error', 'Copy failed', 'Clipboard access is not available.');
         }
-      } else {
-        const id = getChatId();
-        if (!id) {
-          toast('warn', 'Telegram not linked', 'Add your chat ID in Telegram Link settings.');
-          toggleSettings(true);
-          return;
-        }
-        btn.disabled = true;
-        try {
-          await tgText(id, `🛠 ENGSTRO · ${reportId(entry.ts)}\n\n${toPlain(entry.text)}`);
-          toast('success', 'Sent', 'Report delivered to Telegram.', 2500);
-        } catch (err) {
-          toast('error', 'Telegram failed', err.message);
-        } finally {
-          btn.disabled = false;
-        }
       }
     });
 
@@ -1127,7 +1151,6 @@
     return status;
   }
 
-  // ---------- persistence (local device log) ----------
   function saveLog() {
     try {
       const slim = state.history.slice(-60).map((h) => ({
@@ -1152,9 +1175,6 @@
     }
   }
 
-  // =========================================================
-  // Send flow
-  // =========================================================
   function updateSendState() {
     const hasContent = el.prompt.value.trim().length > 0 || !!state.attachment;
     el.send.disabled = state.busy || recorder.active || !hasContent;
@@ -1190,7 +1210,6 @@
         if (att.size > TELEGRAM_UPLOAD_CAP) {
           throw new Error('Telegram bots can only upload files up to 50 MB — the file was analysed but not forwarded.');
         }
-        // Recorded voice notes go through sendVoice so n8n fires its Voice event.
         const telegramKind = att.voice ? 'voice' : att.kind === 'image' ? 'photo' : att.kind;
         const caption = `🛠 ENGSTRO query${text ? `\n\n${text}` : ''}`;
         const stopIndicator = startUploadIndicator(statusNode, att);
@@ -1223,7 +1242,7 @@
     const ts = Date.now();
     const priorHistory = state.history.filter((h) => !h.error).map((h) => ({ role: h.role, text: h.text })).filter((h) => h.text);
     const entry = { role: 'user', text, ts, attachment: att ? { ...att } : undefined };
-    if (att) state.attachment.sent = true; // keep object URL alive for the feed card
+    if (att) state.attachment.sent = true;
     state.history.push(entry);
     saveLog();
 
@@ -1288,3 +1307,5 @@
   restoreLog();
   updateSendState();
 })();
+
+```
